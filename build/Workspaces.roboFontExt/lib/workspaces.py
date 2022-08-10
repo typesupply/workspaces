@@ -1,3 +1,16 @@
+from copy import deepcopy
+import pprint
+import re
+import AppKit
+import vanilla
+from vanilla import vanillaBase
+import ezui
+from mojo.extensions import (
+    getExtensionDefault,
+    setExtensionDefault
+)
+from mojo.tools import CallbackWrapper
+
 """
 ---------------
 IMPORTANT NOTES
@@ -16,34 +29,9 @@ So, you know, I'm not worried about this code being:
 2. Future proof.
 
 It is what it is.
-
-
------
-To Do
------
-
-- where should "Workspaces" go in the menu?
-  does it need a divider?
-- add a common attribute search to the NSWindow.delegate()
-  (aka self.w) for future use. something like vanillaWindowIdentifier.
-- add a way to register a window opening function.
-  this can be used when a desired window type isn't open.
 """
 
-from copy import deepcopy
-import pprint
-import re
-import AppKit
-import vanilla
-from vanilla import vanillaBase
-import ezui
-from mojo.extensions import (
-    getExtensionDefault,
-    setExtensionDefault
-)
-from mojo.tools import CallbackWrapper
-
-DEBUG = True
+DEBUG = ".robofontext" not in __file__.lower()
 
 extensionIdentifier = "com.typesupply.Workspaces"
 defaultsKey = extensionIdentifier + ".workspaces"
@@ -348,18 +336,6 @@ def applyWorkspace(workspace):
 # ----
 # Menu
 # ----
-
-"""
-> Workspace
-  Name 1
-  Name 2
-  Name 3
-  ----
-  Save Workspace...
-  Edit Workspaces...
-  ----
-  Help
-"""
 
 class WorkspacesMenuController:
 
