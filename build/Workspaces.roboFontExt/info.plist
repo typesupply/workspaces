@@ -9,7 +9,7 @@
 	<key>developerURL</key>
 	<string>http://typesupply.com</string>
 	<key>html</key>
-	<false/>
+	<true/>
 	<key>launchAtStartUp</key>
 	<true/>
 	<key>mainScript</key>
@@ -21,7 +21,7 @@
 	<key>requiresVersionMinor</key>
 	<string>2</string>
 	<key>timeStamp</key>
-	<real>1660053909.107116</real>
+	<real>1660138795.683517</real>
 	<key>version</key>
 	<string>0.1</string>
 </dict>

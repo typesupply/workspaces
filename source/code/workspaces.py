@@ -126,6 +126,14 @@ def getNewWorkspaceName():
 # Tools
 # -----
 
+def getWorkspaceWindowIdentifier(window):
+    delegate = window.delegate()
+    if delegate is None:
+        return None
+    if hasattr(delegate, "workspaceWindowIdentifier"):
+        return delegate.workspaceWindowIdentifier
+    return None
+
 def getVanillaWindow(window):
     delegate = window.delegate()
     if delegate is None:
@@ -189,6 +197,13 @@ def isOutput(window):
     return hasVanillaWrapperWithClassName(window, "Debugger")
 
 registerWindowTypeLookup("Output", isOutput)
+
+# Single Window
+
+def isSingleWindow(window):
+    return hasVanillaWrapperWithClassName(window, "DoodleSingleModeWindow")
+
+registerWindowTypeLookup("Single Window", isSingleWindow)
 
 # Font Overview
 
@@ -299,8 +314,16 @@ def getCurrentWorkspace():
     workspace = {}
     unknown = []
     for window in app.windows():
+        # have the standard identifier?
+        windowIdentifier = getWorkspaceWindowIdentifier(window)
+        if windowIdentifier:
+            location = getWindowLocation(window)
+            workspace[windowIdentifier] = location
+            continue
+        # skip it?
         if shouldSkipWindow(window):
             continue
+        # work through the heuristics.
         found = False
         for windowTypeName, lookup in windowTypeLookupRegistry.items():
             if lookup(window):
@@ -318,8 +341,16 @@ def applyWorkspace(workspace):
     app = AppKit.NSApp()
     matches = []
     for window in app.windows():
+        # have the standard identifier?
+        windowIdentifier = getWorkspaceWindowIdentifier(window)
+        if windowIdentifier:
+            if windowIdentifier in workspace:
+                matches.append((window, workspace[windowIdentifier]))
+            continue
+        # skip it?
         if shouldSkipWindow(window):
             continue
+        # work through the heuristics.
         for windowTypeName, lookup in windowTypeLookupRegistry.items():
             if lookup(window):
                 if windowTypeName in workspace:
