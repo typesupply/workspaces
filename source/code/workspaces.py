@@ -10,6 +10,8 @@ from mojo.extensions import (
     setExtensionDefault
 )
 from mojo.tools import CallbackWrapper
+from mojo import events
+from mojo import UI
 
 """
 ---------------
@@ -339,6 +341,31 @@ def dumpUnknownWindowData(window):
     if wrapper is not None:
         print("-", wrapper.__class__.__name__)
 
+# -------
+# Openers
+# -------
+
+windowOpenerRegistry = {}
+
+def registerWindowOpener(windowIdentifier, constructor):
+    """
+    The constructor must not require any args or kwargs.
+    The constructor must return the vanilla Window (or
+    subclass) object OR have the vanilla Window object
+    located at the `w` attribute of the returned object.
+    """
+    windowOpenerRegistry[windowIdentifier] = constructor
+
+def openWindowWithIdentifier(windowIdentifier):
+    events.postEvent(
+        "Workspaces.RegisterWindowOpeners",
+        register=registerWindowOpener
+    )
+    if windowIdentifier not in windowOpenerRegistry:
+        return None
+    window = windowOpenerRegistry[windowIdentifier]()
+    return window.getNSWindow()
+
 # ----------------
 # Wokspace Actions
 # ----------------
@@ -420,6 +447,14 @@ def applyWorkspace(workspace):
                         break
                 if found:
                     break
+    # open necessary windows
+    for windowIdentifier, windowData in searching:
+        window = openWindowWithIdentifier(windowIdentifier)
+        if hasattr(window, "w"):
+            window = window.w
+        if window is not None:
+            matched.append((window, windowData))
+    # apply workspace settings
     screenFrame = AppKit.NSScreen.mainScreen().frame()
     for window, data in matched:
         position = data["position"]
