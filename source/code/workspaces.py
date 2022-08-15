@@ -449,7 +449,9 @@ class WorkspacesMenuController:
             )
             submenu = AppKit.NSMenu.alloc().initWithTitle_(title)
             self.workspacesItem.setSubmenu_(submenu)
+            windowMenu.insertItem_atIndex_(AppKit.NSMenuItem.separatorItem(), 0)
             windowMenu.insertItem_atIndex_(self.workspacesItem, 0)
+            windowMenu.insertItem_atIndex_(AppKit.NSMenuItem.separatorItem(), 0)
         self.buildMenuItems()
 
     def buildMenuItems(self):
