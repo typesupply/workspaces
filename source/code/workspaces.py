@@ -553,7 +553,7 @@ class EditWorkspacesWindowController(ezui.WindowController):
                 allowsMultipleSelection=False,
                 allowsEmptySelection=False,
                 showColumnTitles=False,
-                columnDescriptions=[dict(identifier="name")]
+                columnDescriptions=[dict(identifier="name", editable=True)]
             ),
             editor=dict(
                 width=300
@@ -646,6 +646,9 @@ class EditWorkspacesWindowController(ezui.WindowController):
         item = items[0]
         workspace = item["workspace"]
         applyWorkspace(workspace)
+
+    def tableEditCallback(self, sender):
+        self.writeWorkspaces()
 
     def editorCallback(self, sender):
         table = self.w.getItem("table")
