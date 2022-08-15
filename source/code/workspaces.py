@@ -34,7 +34,54 @@ It is what it is.
 DEBUG = ".robofontext" not in __file__.lower()
 
 extensionIdentifier = "com.typesupply.Workspaces"
-defaultsKey = extensionIdentifier + ".workspaces"
+workspacesDefaultsKey = extensionIdentifier + ".workspaces"
+
+# -----------------------
+# Backwards Compatibility
+# -----------------------
+
+"""
+Storage Format:
+
+{
+    workspace name : [
+        (window identifier, {
+            position : (x, y),
+            size : (w, h)
+        )
+    ]
+}
+"""
+
+def convertDefaults0():
+    """
+    Alpha 0.1 Storage Format:
+        {
+            workspace name : {
+                window identifier : {
+                    position : (x, y),
+                    size : (w, h)
+                }
+            }
+        }
+    """
+    stored = getExtensionDefault(workspacesDefaultsKey, {})
+    if stored is not None:
+        neededConversion = False
+        converted = {}
+        for workspaceName, workspace in stored.items():
+            if isinstance(workspace, (dict, AppKit.NSDictionary)):
+                neededConversion = True
+                l = []
+                for windowIdentifier in sorted(workspace.keys()):
+                    windowData = workspace[windowIdentifier]
+                    l.append((windowIdentifier, windowData))
+                workspace = l
+            converted[workspaceName] = workspace
+        if neededConversion:
+            setExtensionDefault(workspacesDefaultsKey, converted)
+
+convertDefaults0()
 
 # -------
 # Strings
@@ -42,8 +89,7 @@ defaultsKey = extensionIdentifier + ".workspaces"
 
 def workspaceToString(workspace):
     lines = []
-    for window in sorted(workspace.keys(), key=str.casefold):
-        data = workspace[window]
+    for window, data in workspace:
         x, y = data["position"]
         w, h = data["size"]
         lines.append(f"+ {window}")
@@ -61,8 +107,8 @@ coordinateRE = re.compile(
 )
 
 def parseWorkspaceString(string):
-    data = {}
-    window = None
+    workspace = []
+    currentData = None
     for line in string.splitlines():
         line = line.strip()
         line = line.split("#")[0]
@@ -72,8 +118,9 @@ def parseWorkspaceString(string):
         # window
         if line.startswith("+"):
             line = line[1:].strip()
-            window = line
-            data[window] = {}
+            windowIdentifier = line
+            currentData = {}
+            workspace.append((windowIdentifier, currentData))
             continue
         # position
         s = "position:"
@@ -81,7 +128,7 @@ def parseWorkspaceString(string):
             line = line[len(s):].strip()
             m = coordinateRE.match(line)
             if m is not None:
-                data[window]["position"] = (int(m.group(1)), int(m.group(2)))
+                currentData["position"] = (int(m.group(1)), int(m.group(2)))
             continue
         # size
         s = "size:"
@@ -89,27 +136,29 @@ def parseWorkspaceString(string):
             line = line[len(s):].strip()
             m = coordinateRE.match(line)
             if m is not None:
-                data[window]["size"] = (int(m.group(1)), int(m.group(2)))
+                currentData["size"] = (int(m.group(1)), int(m.group(2)))
             continue
     # sanitize
-    for window, d in list(data.items()):
-        if not window:
-            del data[window]
-        if "position" not in d:
-            del data[window]
-        elif "size" not in d:
-            del data[window]
-    return data
+    sanitized = []
+    for windowIdentifier, windowData in workspace:
+        if not windowIdentifier:
+            continue
+        if "position" not in windowData:
+            continue
+        elif "size" not in windowData:
+            continue
+        sanitized.append((windowIdentifier, windowData))
+    return sanitized
 
 # -------
 # Storage
 # -------
 
 def readWorkspacesFromDefaults():
-    return getExtensionDefault(defaultsKey, {})
+    return getExtensionDefault(workspacesDefaultsKey, {})
 
 def writeWorkspacesToDefaults(workspaces):
-    setExtensionDefault(defaultsKey, workspaces)
+    setExtensionDefault(workspacesDefaultsKey, workspaces)
 
 def getNewWorkspaceName():
     existing = list(readWorkspacesFromDefaults().keys())
@@ -311,14 +360,14 @@ def getWindowLocation(window):
 
 def getCurrentWorkspace():
     app = AppKit.NSApp()
-    workspace = {}
+    workspace = []
     unknown = []
     for window in app.windows():
         # have the standard identifier?
         windowIdentifier = getWorkspaceWindowIdentifier(window)
         if windowIdentifier:
             location = getWindowLocation(window)
-            workspace[windowIdentifier] = location
+            workspace.append((windowIdentifier, location))
             continue
         # skip it?
         if shouldSkipWindow(window):
@@ -329,7 +378,7 @@ def getCurrentWorkspace():
             if lookup(window):
                 found = True
                 location = getWindowLocation(window)
-                workspace[windowTypeName] = location
+                workspace.append((windowTypeName, location))
                 break
         if not found:
             unknown.append(window)
@@ -339,25 +388,40 @@ def getCurrentWorkspace():
 
 def applyWorkspace(workspace):
     app = AppKit.NSApp()
-    matches = []
+    searching = []
+    for windowIdentifier, windowData in workspace:
+        searching.append((windowIdentifier, dict(windowData)))
+    matched = []
     for window in app.windows():
         # have the standard identifier?
         windowIdentifier = getWorkspaceWindowIdentifier(window)
         if windowIdentifier:
-            if windowIdentifier in workspace:
-                matches.append((window, workspace[windowIdentifier]))
-            continue
+            found = False
+            for i, (wantedIdentifier, windowData) in enumerate(searching):
+                if wantedIdentifier == windowIdentifier:
+                    matched.append((window, windowData))
+                    del searching[i]
+                    found = True
+                    break
+            if found:
+                continue
         # skip it?
         if shouldSkipWindow(window):
             continue
         # work through the heuristics.
         for windowTypeName, lookup in windowTypeLookupRegistry.items():
             if lookup(window):
-                if windowTypeName in workspace:
-                    matches.append((window, workspace[windowTypeName]))
-                break
+                found = False
+                for i, (wantedIdentifier, windowData) in enumerate(searching):
+                    if wantedIdentifier == windowTypeName:
+                        matched.append((window, windowData))
+                        del searching[i]
+                        found = True
+                        break
+                if found:
+                    break
     screenFrame = AppKit.NSScreen.mainScreen().frame()
-    for window, data in matches:
+    for window, data in matched:
         position = data["position"]
         size = data["size"]
         posSize = (position, size)
