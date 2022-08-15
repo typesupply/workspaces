@@ -10,7 +10,7 @@ roboFontVersion = "4.2"
 pycOnly = False
 menuItems = []
 
-mainScript = "workspaces.py"
+mainScript = "launch.py"
 launchAtStartUp = True
 installAfterBuild = True
 

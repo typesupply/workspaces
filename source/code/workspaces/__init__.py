@@ -1,3 +1,4 @@
+import os
 from copy import deepcopy
 import pprint
 import re
@@ -364,6 +365,8 @@ def openWindowWithIdentifier(windowIdentifier):
     if windowIdentifier not in windowOpenerRegistry:
         return None
     window = windowOpenerRegistry[windowIdentifier]()
+    if hasattr(window, "w"):
+        window = window.w
     return window.getNSWindow()
 
 # ----------------
@@ -463,6 +466,14 @@ def applyWorkspace(workspace):
         windowFrame = vanillaBase._calcFrame(screenFrame, posSize, absolutePositioning=True)
         window.setFrame_display_animate_(windowFrame, True, False)
 
+def applyWorkspaceWithName(name):
+    workspaces = readWorkspacesFromDefaults()
+    if name not in workspaces:
+        print("No workspace with name:", name)
+        return
+    workspace = workspaces[name]
+    applyWorkspace(workspace)
+
 # ----
 # Menu
 # ----
@@ -556,7 +567,13 @@ class WorkspacesMenuController:
         self.openEditWorkspacesWindow(self.workspaces)
 
     def helpItemCallback(self, sender):
-        print("helpItemCallback")
+        path = os.path.dirname(__file__)
+        path = os.path.dirname(path)
+        path = os.path.dirname(path)
+        path = os.path.join(path, "html", "index.html")
+        UI.HelpWindow(
+            path
+        )
 
     def openEditWorkspacesWindow(self, workspaces, selected=None):
         if self.editWindow is not None:
