@@ -9,11 +9,75 @@
         </head>
         <body>
         <h1>Workspaces</h1>
-<ul>
-<li>Explain how workspaceWindowIdentifier works.</li>
-<li>Note that it will allow multiple windows of the same type as long as the identifier is different.</li>
-<li>explain how to edit a workspace.</li>
-</ul>
+<p>Save and restore window positions.</p>
+<h2 id="applying-workspaces">Applying Workspaces</h2>
+<p>To apply a saved workspace, select the desired workspace
+from the Windows &gt; Workspaces menu.</p>
+<p>If a window in the workspace is not open and Workspaces
+knows how to open the window, the window will be opened.</p>
+<h2 id="saving-workspaces">Saving Workspaces</h2>
+<p>To save the current workspace, use the Windows &gt; Workspaces &gt;
+Save Workspace... menu item. This will store the current
+workspace and open it within the workspace editor.</p>
+<h2 id="editing-workspaces">Editing Workspaces</h2>
+<p>To edit the available workspaces or change the settings
+for a particular workspace, use the the Windows &gt; Workspaces &gt;
+Edit Workspaces... menu item. The available workspaces will
+be listed and the text editor allows editing. This is the
+syntax:</p>
+<div class="codehilite"><pre><span></span><code>+ Window Identifier
+position: (x, y)
+size: (x, y)
+</code></pre></div>
+
+
+<h2 id="developer-notes">Developer Notes</h2>
+<p>Scripts and extensions can improve the behavior of their
+windows within Workspaces by providing some small bits
+of data to help with the window identification process.</p>
+<h3 id="setting-a-window-identifier">Setting a Window Identifier</h3>
+<p>Windows are identified through a set of heuristics. The most
+reliable way to make sure that a window is correctly identified
+is to have a <code>workspaceWindowIdentifier</code> attribute set on the
+vanilla <code>Window</code> (or subclass) object that defined the window.
+Scripts and extensions can do this by including the following
+when windows are defined:</p>
+<div class="codehilite"><pre><span></span><code><span class="bp">self</span><span class="o">.</span><span class="n">w</span><span class="o">.</span><span class="n">workspaceWindowIdentifier</span> <span class="o">=</span> <span class="s2">&quot;My Extension Window&quot;</span>
+</code></pre></div>
+
+
+<h3 id="registering-a-window-opener">Registering a Window Opener</h3>
+<p>To register a window opener, observe the event shown below and,
+when it is posted, register a window constructor as shown.
+The window contructor must return an object that is either
+a vanilla <code>Window</code> (or subclass) or an object with a vanilla
+<code>Window</code> object located at the <code>w</code> attribute.</p>
+<div class="codehilite"><pre><span></span><code><span class="kn">from</span> <span class="nn">mojo</span> <span class="kn">import</span> <span class="n">events</span>
+
+<span class="k">class</span> <span class="nc">MyWindowController</span><span class="p">:</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">w</span> <span class="o">=</span> <span class="n">vanilla</span><span class="o">.</span><span class="n">Window</span><span class="p">((</span><span class="mi">200</span><span class="p">,</span> <span class="mi">200</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">w</span><span class="o">.</span><span class="n">workspaceWindowIdentifier</span> <span class="o">=</span> <span class="s2">&quot;My Window&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">w</span><span class="o">.</span><span class="n">open</span><span class="p">()</span>
+
+<span class="k">class</span> <span class="nc">MyWorkspacesObserver</span><span class="p">:</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">events</span><span class="o">.</span><span class="n">addObserver</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;register&quot;</span><span class="p">,</span> <span class="s2">&quot;Workspaces.RegisterWindowOpeners&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">register</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">info</span><span class="p">):</span>
+        <span class="n">info</span><span class="p">[</span><span class="s2">&quot;register&quot;</span><span class="p">](</span><span class="s2">&quot;My Window&quot;</span><span class="p">,</span> <span class="n">MyWindowController</span><span class="p">)</span>
+
+<span class="n">PreviewWorkspacesObserver</span><span class="p">()</span>
+</code></pre></div>
+
+
+<h3 id="applying-a-workspace-with-code">Applying A Workspace With Code</h3>
+<p>Workspaces can be applied with code. Like this:</p>
+<div class="codehilite"><pre><span></span><code><span class="kn">import</span> <span class="nn">workspaces</span>
+<span class="n">workspaces</span><span class="o">.</span><span class="n">applyWorkspaceWithName</span><span class="p">(</span><span class="s2">&quot;My Workspace&quot;</span><span class="p">)</span>
+</code></pre></div>
         </body>
         </html>
         

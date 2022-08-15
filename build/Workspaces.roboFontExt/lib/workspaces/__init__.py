@@ -1,3 +1,4 @@
+import os
 from copy import deepcopy
 import pprint
 import re
@@ -10,6 +11,8 @@ from mojo.extensions import (
     setExtensionDefault
 )
 from mojo.tools import CallbackWrapper
+from mojo import events
+from mojo import UI
 
 """
 ---------------
@@ -34,7 +37,54 @@ It is what it is.
 DEBUG = ".robofontext" not in __file__.lower()
 
 extensionIdentifier = "com.typesupply.Workspaces"
-defaultsKey = extensionIdentifier + ".workspaces"
+workspacesDefaultsKey = extensionIdentifier + ".workspaces"
+
+# -----------------------
+# Backwards Compatibility
+# -----------------------
+
+"""
+Storage Format:
+
+{
+    workspace name : [
+        (window identifier, {
+            position : (x, y),
+            size : (w, h)
+        )
+    ]
+}
+"""
+
+def convertDefaults0():
+    """
+    Alpha 0.1 Storage Format:
+        {
+            workspace name : {
+                window identifier : {
+                    position : (x, y),
+                    size : (w, h)
+                }
+            }
+        }
+    """
+    stored = getExtensionDefault(workspacesDefaultsKey, {})
+    if stored is not None:
+        neededConversion = False
+        converted = {}
+        for workspaceName, workspace in stored.items():
+            if isinstance(workspace, (dict, AppKit.NSDictionary)):
+                neededConversion = True
+                l = []
+                for windowIdentifier in sorted(workspace.keys()):
+                    windowData = workspace[windowIdentifier]
+                    l.append((windowIdentifier, windowData))
+                workspace = l
+            converted[workspaceName] = workspace
+        if neededConversion:
+            setExtensionDefault(workspacesDefaultsKey, converted)
+
+convertDefaults0()
 
 # -------
 # Strings
@@ -42,8 +92,7 @@ defaultsKey = extensionIdentifier + ".workspaces"
 
 def workspaceToString(workspace):
     lines = []
-    for window in sorted(workspace.keys(), key=str.casefold):
-        data = workspace[window]
+    for window, data in workspace:
         x, y = data["position"]
         w, h = data["size"]
         lines.append(f"+ {window}")
@@ -61,8 +110,8 @@ coordinateRE = re.compile(
 )
 
 def parseWorkspaceString(string):
-    data = {}
-    window = None
+    workspace = []
+    currentData = None
     for line in string.splitlines():
         line = line.strip()
         line = line.split("#")[0]
@@ -72,8 +121,9 @@ def parseWorkspaceString(string):
         # window
         if line.startswith("+"):
             line = line[1:].strip()
-            window = line
-            data[window] = {}
+            windowIdentifier = line
+            currentData = {}
+            workspace.append((windowIdentifier, currentData))
             continue
         # position
         s = "position:"
@@ -81,7 +131,7 @@ def parseWorkspaceString(string):
             line = line[len(s):].strip()
             m = coordinateRE.match(line)
             if m is not None:
-                data[window]["position"] = (int(m.group(1)), int(m.group(2)))
+                currentData["position"] = (int(m.group(1)), int(m.group(2)))
             continue
         # size
         s = "size:"
@@ -89,27 +139,29 @@ def parseWorkspaceString(string):
             line = line[len(s):].strip()
             m = coordinateRE.match(line)
             if m is not None:
-                data[window]["size"] = (int(m.group(1)), int(m.group(2)))
+                currentData["size"] = (int(m.group(1)), int(m.group(2)))
             continue
     # sanitize
-    for window, d in list(data.items()):
-        if not window:
-            del data[window]
-        if "position" not in d:
-            del data[window]
-        elif "size" not in d:
-            del data[window]
-    return data
+    sanitized = []
+    for windowIdentifier, windowData in workspace:
+        if not windowIdentifier:
+            continue
+        if "position" not in windowData:
+            continue
+        elif "size" not in windowData:
+            continue
+        sanitized.append((windowIdentifier, windowData))
+    return sanitized
 
 # -------
 # Storage
 # -------
 
 def readWorkspacesFromDefaults():
-    return getExtensionDefault(defaultsKey, {})
+    return getExtensionDefault(workspacesDefaultsKey, {})
 
 def writeWorkspacesToDefaults(workspaces):
-    setExtensionDefault(defaultsKey, workspaces)
+    setExtensionDefault(workspacesDefaultsKey, workspaces)
 
 def getNewWorkspaceName():
     existing = list(readWorkspacesFromDefaults().keys())
@@ -290,6 +342,33 @@ def dumpUnknownWindowData(window):
     if wrapper is not None:
         print("-", wrapper.__class__.__name__)
 
+# -------
+# Openers
+# -------
+
+windowOpenerRegistry = {}
+
+def registerWindowOpener(windowIdentifier, constructor):
+    """
+    The constructor must not require any args or kwargs.
+    The constructor must return the vanilla Window (or
+    subclass) object OR have the vanilla Window object
+    located at the `w` attribute of the returned object.
+    """
+    windowOpenerRegistry[windowIdentifier] = constructor
+
+def openWindowWithIdentifier(windowIdentifier):
+    events.postEvent(
+        "Workspaces.RegisterWindowOpeners",
+        register=registerWindowOpener
+    )
+    if windowIdentifier not in windowOpenerRegistry:
+        return None
+    window = windowOpenerRegistry[windowIdentifier]()
+    if hasattr(window, "w"):
+        window = window.w
+    return window.getNSWindow()
+
 # ----------------
 # Wokspace Actions
 # ----------------
@@ -311,14 +390,14 @@ def getWindowLocation(window):
 
 def getCurrentWorkspace():
     app = AppKit.NSApp()
-    workspace = {}
+    workspace = []
     unknown = []
     for window in app.windows():
         # have the standard identifier?
         windowIdentifier = getWorkspaceWindowIdentifier(window)
         if windowIdentifier:
             location = getWindowLocation(window)
-            workspace[windowIdentifier] = location
+            workspace.append((windowIdentifier, location))
             continue
         # skip it?
         if shouldSkipWindow(window):
@@ -329,7 +408,7 @@ def getCurrentWorkspace():
             if lookup(window):
                 found = True
                 location = getWindowLocation(window)
-                workspace[windowTypeName] = location
+                workspace.append((windowTypeName, location))
                 break
         if not found:
             unknown.append(window)
@@ -339,30 +418,61 @@ def getCurrentWorkspace():
 
 def applyWorkspace(workspace):
     app = AppKit.NSApp()
-    matches = []
+    searching = []
+    for windowIdentifier, windowData in workspace:
+        searching.append((windowIdentifier, dict(windowData)))
+    matched = []
     for window in app.windows():
         # have the standard identifier?
         windowIdentifier = getWorkspaceWindowIdentifier(window)
         if windowIdentifier:
-            if windowIdentifier in workspace:
-                matches.append((window, workspace[windowIdentifier]))
-            continue
+            found = False
+            for i, (wantedIdentifier, windowData) in enumerate(searching):
+                if wantedIdentifier == windowIdentifier:
+                    matched.append((window, windowData))
+                    del searching[i]
+                    found = True
+                    break
+            if found:
+                continue
         # skip it?
         if shouldSkipWindow(window):
             continue
         # work through the heuristics.
         for windowTypeName, lookup in windowTypeLookupRegistry.items():
             if lookup(window):
-                if windowTypeName in workspace:
-                    matches.append((window, workspace[windowTypeName]))
-                break
+                found = False
+                for i, (wantedIdentifier, windowData) in enumerate(searching):
+                    if wantedIdentifier == windowTypeName:
+                        matched.append((window, windowData))
+                        del searching[i]
+                        found = True
+                        break
+                if found:
+                    break
+    # open necessary windows
+    for windowIdentifier, windowData in searching:
+        window = openWindowWithIdentifier(windowIdentifier)
+        if hasattr(window, "w"):
+            window = window.w
+        if window is not None:
+            matched.append((window, windowData))
+    # apply workspace settings
     screenFrame = AppKit.NSScreen.mainScreen().frame()
-    for window, data in matches:
+    for window, data in matched:
         position = data["position"]
         size = data["size"]
         posSize = (position, size)
         windowFrame = vanillaBase._calcFrame(screenFrame, posSize, absolutePositioning=True)
         window.setFrame_display_animate_(windowFrame, True, False)
+
+def applyWorkspaceWithName(name):
+    workspaces = readWorkspacesFromDefaults()
+    if name not in workspaces:
+        print("No workspace with name:", name)
+        return
+    workspace = workspaces[name]
+    applyWorkspace(workspace)
 
 # ----
 # Menu
@@ -385,7 +495,9 @@ class WorkspacesMenuController:
             )
             submenu = AppKit.NSMenu.alloc().initWithTitle_(title)
             self.workspacesItem.setSubmenu_(submenu)
+            windowMenu.insertItem_atIndex_(AppKit.NSMenuItem.separatorItem(), 0)
             windowMenu.insertItem_atIndex_(self.workspacesItem, 0)
+            windowMenu.insertItem_atIndex_(AppKit.NSMenuItem.separatorItem(), 0)
         self.buildMenuItems()
 
     def buildMenuItems(self):
@@ -455,7 +567,13 @@ class WorkspacesMenuController:
         self.openEditWorkspacesWindow(self.workspaces)
 
     def helpItemCallback(self, sender):
-        print("helpItemCallback")
+        path = os.path.dirname(__file__)
+        path = os.path.dirname(path)
+        path = os.path.dirname(path)
+        path = os.path.join(path, "html", "index.html")
+        UI.HelpWindow(
+            path
+        )
 
     def openEditWorkspacesWindow(self, workspaces, selected=None):
         if self.editWindow is not None:
@@ -489,7 +607,7 @@ class EditWorkspacesWindowController(ezui.WindowController):
                 allowsMultipleSelection=False,
                 allowsEmptySelection=False,
                 showColumnTitles=False,
-                columnDescriptions=[dict(identifier="name")]
+                columnDescriptions=[dict(identifier="name", editable=True)]
             ),
             editor=dict(
                 width=300
@@ -582,6 +700,9 @@ class EditWorkspacesWindowController(ezui.WindowController):
         item = items[0]
         workspace = item["workspace"]
         applyWorkspace(workspace)
+
+    def tableEditCallback(self, sender):
+        self.writeWorkspaces()
 
     def editorCallback(self, sender):
         table = self.w.getItem("table")

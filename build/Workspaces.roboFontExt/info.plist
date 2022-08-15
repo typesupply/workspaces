@@ -13,7 +13,7 @@
 	<key>launchAtStartUp</key>
 	<true/>
 	<key>mainScript</key>
-	<string>workspaces.py</string>
+	<string>launch.py</string>
 	<key>name</key>
 	<string>Workspaces</string>
 	<key>requiresVersionMajor</key>
@@ -21,7 +21,7 @@
 	<key>requiresVersionMinor</key>
 	<string>2</string>
 	<key>timeStamp</key>
-	<real>1660138795.683517</real>
+	<real>1660587538.4879382</real>
 	<key>version</key>
 	<string>0.1</string>
 </dict>
