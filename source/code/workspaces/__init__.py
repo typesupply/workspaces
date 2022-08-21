@@ -5,6 +5,7 @@ import re
 import AppKit
 import vanilla
 from vanilla import vanillaBase
+from vanilla import dialogs
 import ezui
 from mojo.extensions import (
     getExtensionDefault,
@@ -13,6 +14,7 @@ from mojo.extensions import (
 from mojo.tools import CallbackWrapper
 from mojo import events
 from mojo import UI
+from mojo.roboFont import OpenFont
 
 """
 ---------------
@@ -482,8 +484,9 @@ class WorkspacesMenuController:
 
     def __init__(self):
         self.editWindow = None
-        title = "Workspaces"
         mainMenu = AppKit.NSApp().mainMenu()
+        # Window > Workspaces
+        title = "Workspaces"
         windowMenu = mainMenu.itemWithTitle_("Window")
         windowMenu = windowMenu.submenu()
         self.workspacesItem = windowMenu.itemWithTitle_(title)
@@ -498,6 +501,27 @@ class WorkspacesMenuController:
             windowMenu.insertItem_atIndex_(AppKit.NSMenuItem.separatorItem(), 0)
             windowMenu.insertItem_atIndex_(self.workspacesItem, 0)
             windowMenu.insertItem_atIndex_(AppKit.NSMenuItem.separatorItem(), 0)
+        # File > Open in Workspace…
+        title = "Open in Workspace…"
+        fileMenu = mainMenu.itemWithTitle_("File")
+        fileMenu = fileMenu.submenu()
+        self.openInWorkspaceItem = fileMenu.itemWithTitle_(title)
+        if not self.openInWorkspaceItem:
+            self.openInWorkspaceItemTarget = CallbackWrapper(self.openInWorkspaceItemCallback)
+            self.openInWorkspaceItem = AppKit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+                title,
+                "action:",
+                "o"
+            )
+            self.openInWorkspaceItem.setKeyEquivalentModifierMask_(
+                AppKit.NSEventModifierFlagCommand |
+                AppKit.NSEventModifierFlagShift |
+                AppKit.NSEventModifierFlagControl
+            )
+            self.openInWorkspaceItem.setTarget_(self.openInWorkspaceItemTarget)
+            index = fileMenu.indexOfItemWithTitle_("Open…") + 1
+            fileMenu.insertItem_atIndex_(self.openInWorkspaceItem, index)
+        # build the workspace items
         self.buildMenuItems()
 
     def buildMenuItems(self):
@@ -545,6 +569,28 @@ class WorkspacesMenuController:
                 )
                 item.setTarget_(description["target"])
             submenu.addItem_(item)
+
+    def openInWorkspaceItemCallback(self, sender):
+        workspaces = list(sorted(self.workspaces.keys(), key=str.casefold))
+        self.openInWorkspaceAccessoryView = vanilla.Group(
+            (0, 0, 200, 50)
+        )
+        self.openInWorkspaceAccessoryView.workspacesPopUpButton = vanilla.PopUpButton(
+            (10, 10, -10, 22),
+            workspaces
+        )
+        paths = dialogs.getFile(
+            allowsMultipleSelection=True,
+            fileTypes=["ufo", "ufoz", "otf", "ttf"],
+            accessoryView=self.openInWorkspaceAccessoryView
+        )
+        if paths:
+            for path in paths:
+                OpenFont(path, showInterface=True)
+            workspace = self.openInWorkspaceAccessoryView.workspacesPopUpButton.get()
+            workspace = workspaces[workspace]
+            applyWorkspaceWithName(workspace)
+            del self.openInWorkspaceAccessoryView
 
     def workspaceItemCallback(self, sender):
         name = sender.title()
