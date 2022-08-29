@@ -431,6 +431,8 @@ def applyWorkspace(workspace):
             found = False
             for i, (wantedIdentifier, windowData) in enumerate(searching):
                 if wantedIdentifier == windowIdentifier:
+                    if not window.isVisible():
+                        window.makeKeyAndOrderFront_(None)
                     matched.append((window, windowData))
                     del searching[i]
                     found = True
